@@ -20,14 +20,14 @@ class CoupledMapLattice:
         if map_function == 'linear':
             slope = self.map_params.get('slope', 1.0)
             intercept = self.map_params.get('intercept', 0.0)
-            self.f = lambda x: np.clip(slope * x + intercept, 0, 1)
+            self.f = lambda x: np.clip(slope * x + intercept, -1, 1)
         elif map_function == 'logistic':
             r = self.map_params.get('r', 3.9)
-            self.f = lambda x: np.clip(r * x * (1 - x), 0, 1)
+            self.f = lambda x: np.clip(r * x * (1 - x), -1, 1)
         elif map_function == 'circular':
             omega = self.map_params.get('omega', 0.5)
             k = self.map_params.get('k', 1.0)
-            self.f = lambda x: np.clip((x + omega - k / (2 * np.pi) * np.sin(2 * np.pi * x)) % 1, 0, 1)
+            self.f = lambda x: np.clip((x + omega - k / (2 * np.pi) * np.sin(2 * np.pi * x)) % 1, -1, 1)
         else:
             raise ValueError("Unsupported map function")
 
@@ -64,8 +64,6 @@ class CoupledMapLattice:
             self.lattice = np.clip((1 - self.coupling) * fx + self.coupling / 2 * (left + right), 0, 1)
         except Exception as e:
             print(f"Error in step: {e}")
-            # Reset lattice to random values if an error occurs
-            self.lattice = np.random.random(self.size)
         return self.lattice
 
     def run(self, steps):
@@ -74,13 +72,17 @@ class CoupledMapLattice:
 class App(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
+
+        # Declare a new CML
         self.cml = CoupledMapLattice(
             size=100, 
             coupling=0.1, 
-            map_function='linear', 
-            map_params={'slope': 1.3, 'intercept': 0.1}, 
+            map_function='logistic', 
+            map_params={'r': 3.91}, 
+            # map_function='linear', 
+            # map_params={'slope': 1.3, 'intercept': 0.1}, 
             boundary='periodic',
-            initial_condition='random'  # or use a constant value or a list of 100 floats
+            initial_condition='random'  # or use a constant value or a list of floats
         )
         
         # Timer for rate-limiting updates
@@ -88,7 +90,7 @@ class App(QtWidgets.QWidget):
         self.update_interval = 1 / 30  # 30 FPS
 
         self.initUI()
-        self.startMIDI()
+        # self.startMIDI()
 
     def initUI(self):
         self.setWindowTitle('Coupled Map Lattice Control')
@@ -105,19 +107,27 @@ class App(QtWidgets.QWidget):
         if current_time - self.last_update_time >= self.update_interval:
             try:
                 self.cml.set_initial_conditions("random")
-                lattice_evolution = self.cml.run(100)
+                lattice_evolution = self.cml.run(1000)
                 self.figure.clear()
-                plt.imshow(lattice_evolution, aspect='auto', cmap='viridis', vmin=0, vmax=1)
+                
+                # # Calculate the median value of the lattice
+                # median_value = np.median(lattice_evolution)
+                min_value = np.min(lattice_evolution)
+                max_value = np.max(lattice_evolution)
+                
+                # Use a diverging colormap with the midpoint set to the median
+                plt.imshow(lattice_evolution, aspect='auto', cmap='coolwarm', vmin=min_value, vmax=max_value)
                 plt.colorbar()
                 plt.title('Coupled Map Lattice Evolution')
                 plt.xlabel('Lattice Site')
                 plt.ylabel('Time Step')
+                plt.clim(min_value, max_value)  # Set color limits to min and max values
+                plt.gca().set_clim(min_value, max_value)  # Ensure color limits are set for the diverging colormap
+                
                 self.canvas.draw()
                 self.last_update_time = current_time
             except Exception as e:
                 print(f"Error updating plot: {e}")
-                # Optionally, you could reset the CML here
-                # self.cml = CoupledMapLattice(size=100, coupling=0.1, map_function='logistic', map_params={'r': 3.9}, boundary='periodic')
 
     def startMIDI(self):
         self.midi_input = mido.open_input('16n Port 1')
@@ -148,8 +158,8 @@ class App(QtWidgets.QWidget):
                       }
                   )
                   print(f"cc {msg.control} {msg.value}")
-              self.update_plot()  # Call update_plot to check for rate-limiting
-              self.last_update_time = current_time  # Update the last update time
+              self.update_plot()
+              self.last_update_time = current_time
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
