@@ -5,17 +5,22 @@ import sys
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 import time
+import random
 
 class CoupledMapLattice:
     def __init__(self, size, coupling, map_function='logistic', map_params=None, boundary='periodic', initial_condition='random'):
         self.size = size
-        self.map_params = map_params
+        self.map_params = map_params if map_params is not None else {}  # Initialize with an empty dict if None
         self.coupling = coupling
-        self.set_map_function(map_function, map_params)
+        self.set_map_function(map_function, self.map_params)
         self.set_boundary_condition(boundary)
         self.set_initial_conditions(initial_condition)
 
     def set_map_function(self, map_function, map_params=None):
+        # Safety check for map_params initialization
+        if map_params is None or not isinstance(map_params, dict):
+            self.initialize_map_params(map_function)
+
         self.map_params = map_params
         if map_function == 'linear':
             slope = self.map_params.get('slope', 1.0)
@@ -30,6 +35,24 @@ class CoupledMapLattice:
             self.f = lambda x: np.clip((x + omega - k / (2 * np.pi) * np.sin(2 * np.pi * x)) % 1, -1, 1)
         else:
             raise ValueError("Unsupported map function")
+
+    def initialize_map_params(self, map_function):
+        # Initialize map_params with random values based on the map function
+        if map_function == 'logistic':
+            self.map_params = {'r': random.uniform(0, 4)}
+        elif map_function == 'linear':
+            self.map_params = {
+                'slope': random.uniform(-2, 2),
+                'intercept': random.uniform(-1, 1)
+            }
+        elif map_function == 'circular':
+            self.map_params = {
+                'omega': random.uniform(0, 1),
+                'k': random.uniform(0, 2)
+            }
+        else:
+            raise ValueError("Unsupported map function for parameter initialization")
+        return self.map_params
 
     def set_boundary_condition(self, boundary, value=None):
         if boundary == 'periodic':
@@ -72,17 +95,13 @@ class CoupledMapLattice:
 class App(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
-
-        # Declare a new CML
         self.cml = CoupledMapLattice(
-            size=50, 
+            size=100, 
             coupling=0.1, 
             map_function='logistic', 
-            map_params={'r': 4.91}, 
-            # map_function='linear', 
-            # map_params={'slope': 1.3, 'intercept': 0.1}, 
+            map_params={'r': 3.9}, 
             boundary='periodic',
-            initial_condition='random'  # or use a constant value or a list of floats
+            initial_condition='random'
         )
         
         # Timer for rate-limiting updates
@@ -94,13 +113,107 @@ class App(QtWidgets.QWidget):
 
     def initUI(self):
         self.setWindowTitle('Coupled Map Lattice Control')
+        layout = QtWidgets.QVBoxLayout()
+
+        # Combined layout for map function and parameters using QGridLayout
+        combined_widget = QtWidgets.QWidget()
+        combined_layout = QtWidgets.QGridLayout(combined_widget)
+        
+        # Set fixed height for the combined widget
+        combined_widget.setFixedHeight(250)  # Set your desired height here
+
+        # Map function selection
+        combined_layout.addWidget(QtWidgets.QLabel("Map Function:"), 0, 0)
+        self.map_function_combo = QtWidgets.QComboBox()
+        self.map_function_combo.addItems(['logistic', 'linear', 'circular'])
+        self.map_function_combo.currentTextChanged.connect(self.update_map_function)
+        combined_layout.addWidget(self.map_function_combo, 0, 1)
+
+        # Colormap selection
+        combined_layout.addWidget(QtWidgets.QLabel("Colormap:"), 1, 0)
+        self.cmap_combo = QtWidgets.QComboBox()
+        self.cmap_combo.addItems([
+            'viridis', 'plasma', 'inferno', 'magma', 'cividis',  # Sequential
+            'coolwarm', 'RdYlBu', 'Spectral', 'PiYG', 'BrBG',    # Divergent
+            'Set1', 'Set2', 'Set3', 'Pastel1', 'Pastel2',       # Qualitative
+            'Accent', 'Dark2', 'Paired', 'tab10', 'tab20'       # Miscellaneous
+        ])
+        self.cmap_combo.currentTextChanged.connect(self.update_plot)  # Update plot on cmap change
+        combined_layout.addWidget(self.cmap_combo, 1, 1)
+
+        # Parameter inputs
+        self.param_inputs = {}
+        self.param_layout = QtWidgets.QGridLayout()
+        combined_layout.addLayout(self.param_layout, 2, 0, 1, 2)  # Span across two columns
+
+        # Randomize button
+        self.randomize_button = QtWidgets.QPushButton("Randomize Parameters")
+        self.randomize_button.clicked.connect(self.randomize_parameters)
+        combined_layout.addWidget(self.randomize_button, 3, 0, 1, 2)  # Span across two columns
+
+        # Add combined widget to main layout
+        layout.addWidget(combined_widget)
+
+        # Plot
         self.figure = plt.figure()
         self.canvas = FigureCanvas(self.figure)
-        layout = QtWidgets.QVBoxLayout()
-        layout.addWidget(self.canvas)
+        layout.addWidget(self.canvas)  # This will grow to fill the extra space
+
         self.setLayout(layout)
+        self.update_parameter_inputs()
         self.update_plot()
         self.show()
+
+    def update_map_function(self):
+        function = self.map_function_combo.currentText()
+        
+        self.cml.set_map_function(
+            function,
+            self.cml.initialize_map_params(function)
+        )
+        self.update_parameter_inputs()
+        self.update_plot()
+
+    def update_parameter_inputs(self):
+        # Clear existing inputs
+        for i in reversed(range(self.param_layout.count())): 
+            self.param_layout.itemAt(i).widget().setParent(None)
+        self.param_inputs.clear()
+
+        # Add new inputs based on current map function
+        function = self.map_function_combo.currentText()
+        if function == 'logistic':
+            self.add_parameter_input('r', 3.9, 0, 4)
+        elif function == 'linear':
+            self.add_parameter_input('slope', 1.0, -2, 2)
+            self.add_parameter_input('intercept', 0.0, -1, 1)
+        elif function == 'circular':
+            self.add_parameter_input('omega', 0.5, 0, 1)
+            self.add_parameter_input('k', 1.0, 0, 2)
+
+    def add_parameter_input(self, name, default, min_val, max_val):
+        label = QtWidgets.QLabel(f"{name}:")
+        input_box = QtWidgets.QDoubleSpinBox()
+        input_box.setRange(min_val, max_val)
+        input_box.setSingleStep(0.001)
+        input_box.setValue(default)
+        input_box.valueChanged.connect(self.update_parameters)
+        
+        row = len(self.param_inputs)
+        self.param_layout.addWidget(label, row, 0)
+        self.param_layout.addWidget(input_box, row, 1)
+        self.param_inputs[name] = input_box
+
+    def update_parameters(self):
+        params = {name: input_box.value() for name, input_box in self.param_inputs.items()}
+        self.cml.set_map_function(self.map_function_combo.currentText(), params)
+        self.update_plot()
+
+    def randomize_parameters(self):
+        for name, input_box in self.param_inputs.items():
+            random_value = random.uniform(input_box.minimum(), input_box.maximum())
+            input_box.setValue(random_value)
+        self.update_parameters()
 
     def update_plot(self):
         current_time = time.time()
@@ -110,13 +223,12 @@ class App(QtWidgets.QWidget):
                 lattice_evolution = self.cml.run(250)
                 self.figure.clear()
                 
-                # # Calculate the median value of the lattice
-                # median_value = np.median(lattice_evolution)
                 min_value = np.min(lattice_evolution)
                 max_value = np.max(lattice_evolution)
                 
-                # Use a diverging colormap with the midpoint set to the median
-                plt.imshow(lattice_evolution, aspect='auto', cmap='coolwarm', vmin=min_value, vmax=max_value)
+                # Use the selected colormap
+                selected_cmap = self.cmap_combo.currentText()
+                plt.imshow(lattice_evolution, aspect='auto', cmap=selected_cmap, vmin=min_value, vmax=max_value)
                 plt.colorbar()
                 plt.title('Coupled Map Lattice Evolution')
                 plt.xlabel('Lattice Site')
