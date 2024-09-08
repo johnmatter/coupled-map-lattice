@@ -1,0 +1,4 @@
+numpy>=1.18.0
+mido>=1.2.9
+PyQt5>=5.15.0
+matplotlib>=3.3.0

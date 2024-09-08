@@ -75,10 +75,10 @@ class App(QtWidgets.QWidget):
 
         # Declare a new CML
         self.cml = CoupledMapLattice(
-            size=100, 
+            size=50, 
             coupling=0.1, 
             map_function='logistic', 
-            map_params={'r': 3.91}, 
+            map_params={'r': 4.91}, 
             # map_function='linear', 
             # map_params={'slope': 1.3, 'intercept': 0.1}, 
             boundary='periodic',
@@ -107,7 +107,7 @@ class App(QtWidgets.QWidget):
         if current_time - self.last_update_time >= self.update_interval:
             try:
                 self.cml.set_initial_conditions("random")
-                lattice_evolution = self.cml.run(1000)
+                lattice_evolution = self.cml.run(250)
                 self.figure.clear()
                 
                 # # Calculate the median value of the lattice
@@ -121,8 +121,7 @@ class App(QtWidgets.QWidget):
                 plt.title('Coupled Map Lattice Evolution')
                 plt.xlabel('Lattice Site')
                 plt.ylabel('Time Step')
-                plt.clim(min_value, max_value)  # Set color limits to min and max values
-                plt.gca().set_clim(min_value, max_value)  # Ensure color limits are set for the diverging colormap
+                plt.clim(min_value, max_value)
                 
                 self.canvas.draw()
                 self.last_update_time = current_time
@@ -145,7 +144,7 @@ class App(QtWidgets.QWidget):
                       'linear',
                       {
                           'slope': msg.value / 127.0 * 1 - 0.5,
-                          'intercept': self.map_params.get('intercept', 1.0) / 127.0 * 1 - 0.5,
+                          'intercept': self.map_params.get('intercept', 1.0),
                       }
                   )
                   print(f"cc {msg.control} {msg.value}")
@@ -153,7 +152,7 @@ class App(QtWidgets.QWidget):
                   self.cml.set_map_function(
                       'linear',
                       {
-                          'slope': self.map_params.get('slope', 1.0) / 127.0 * 4,
+                          'slope': self.map_params.get('slope', 1.0),
                           'intercept': msg.value / 127.0 * 4,
                       }
                   )
