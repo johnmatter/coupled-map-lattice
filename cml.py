@@ -115,49 +115,62 @@ class App(QtWidgets.QWidget):
         self.setWindowTitle('Coupled Map Lattice Control')
         layout = QtWidgets.QVBoxLayout()
 
-        # Combined layout for map function and parameters using QGridLayout
-        combined_widget = QtWidgets.QWidget()
-        combined_layout = QtWidgets.QGridLayout(combined_widget)
-        
-        # Set fixed height for the combined widget
-        combined_widget.setFixedHeight(250)  # Set your desired height here
+        # Top control panel
+        control_panel = QtWidgets.QWidget()
+        control_layout = QtWidgets.QGridLayout(control_panel)
+        control_panel.setFixedHeight(250)  # Adjust height as needed
 
+        # Left column
         # Map function selection
-        combined_layout.addWidget(QtWidgets.QLabel("Map Function:"), 0, 0)
+        control_layout.addWidget(QtWidgets.QLabel("Map Function:"), 0, 0)
         self.map_function_combo = QtWidgets.QComboBox()
         self.map_function_combo.addItems(['logistic', 'linear', 'circular'])
         self.map_function_combo.currentTextChanged.connect(self.update_map_function)
-        combined_layout.addWidget(self.map_function_combo, 0, 1)
+        control_layout.addWidget(self.map_function_combo, 0, 1)
 
-        # Colormap selection
-        combined_layout.addWidget(QtWidgets.QLabel("Colormap:"), 1, 0)
-        self.cmap_combo = QtWidgets.QComboBox()
-        self.cmap_combo.addItems([
-            'viridis', 'plasma', 'inferno', 'magma', 'cividis',  # Sequential
-            'coolwarm', 'RdYlBu', 'Spectral', 'PiYG', 'BrBG',    # Divergent
-            'Set1', 'Set2', 'Set3', 'Pastel1', 'Pastel2',       # Qualitative
-            'Accent', 'Dark2', 'Paired', 'tab10', 'tab20'       # Miscellaneous
-        ])
-        self.cmap_combo.currentTextChanged.connect(self.update_plot)  # Update plot on cmap change
-        combined_layout.addWidget(self.cmap_combo, 1, 1)
-
-        # Parameter inputs
+        # Map function parameters
         self.param_inputs = {}
         self.param_layout = QtWidgets.QGridLayout()
-        combined_layout.addLayout(self.param_layout, 2, 0, 1, 2)  # Span across two columns
+        control_layout.addLayout(self.param_layout, 1, 0, 1, 2)
 
         # Randomize button
         self.randomize_button = QtWidgets.QPushButton("Randomize Parameters")
         self.randomize_button.clicked.connect(self.randomize_parameters)
-        combined_layout.addWidget(self.randomize_button, 3, 0, 1, 2)  # Span across two columns
+        control_layout.addWidget(self.randomize_button, 2, 0, 1, 2)  # Span across two columns
 
-        # Add combined widget to main layout
-        layout.addWidget(combined_widget)
+        # Right column
+        # Lattice size, time steps, etc.
+        control_layout.addWidget(QtWidgets.QLabel("Lattice Size:"), 0, 2)
+        self.lattice_size_input = QtWidgets.QSpinBox()
+        self.lattice_size_input.setRange(10, 1000)
+        self.lattice_size_input.setValue(100)
+        control_layout.addWidget(self.lattice_size_input, 0, 3)
+
+        control_layout.addWidget(QtWidgets.QLabel("Time Steps:"), 1, 2)
+        self.time_steps_input = QtWidgets.QSpinBox()
+        self.time_steps_input.setRange(10, 1000)
+        self.time_steps_input.setValue(250)
+        control_layout.addWidget(self.time_steps_input, 1, 3)
+
+        # Colormap selection
+        control_layout.addWidget(QtWidgets.QLabel("Colormap:"), 2, 2)
+        self.cmap_combo = QtWidgets.QComboBox()
+        self.cmap_combo.addItems([
+            'viridis', 'plasma', 'inferno', 'magma', 'cividis',  # Sequential
+            'coolwarm', 'RdYlBu', 'Spectral', 'PiYG', 'BrBG',    # Divergent
+            'Set1', 'Set2', 'Set3', 'Pastel1', 'Pastel2',        # Qualitative
+            'Accent', 'Dark2', 'Paired', 'tab10', 'tab20'        # Miscellaneous
+        ])
+        self.cmap_combo.currentTextChanged.connect(self.update_plot)
+        control_layout.addWidget(self.cmap_combo, 2, 3)
+
+        # Add control panel to main layout
+        layout.addWidget(control_panel)
 
         # Plot
         self.figure = plt.figure()
         self.canvas = FigureCanvas(self.figure)
-        layout.addWidget(self.canvas)  # This will grow to fill the extra space
+        layout.addWidget(self.canvas)
 
         self.setLayout(layout)
         self.update_parameter_inputs()
@@ -210,27 +223,41 @@ class App(QtWidgets.QWidget):
         self.update_plot()
 
     def randomize_parameters(self):
-        for name, input_box in self.param_inputs.items():
-            random_value = random.uniform(input_box.minimum(), input_box.maximum())
-            input_box.setValue(random_value)
-        self.update_parameters()
+        current_function = self.map_function_combo.currentText()
+        new_params = self.cml.initialize_map_params(current_function)
+        self.cml.set_map_function(current_function, new_params)
+        self.update_parameter_inputs()
+        self.update_plot()
 
     def update_plot(self):
         current_time = time.time()
         if current_time - self.last_update_time >= self.update_interval:
             try:
+                lattice_size = self.lattice_size_input.value()
+                time_steps = self.time_steps_input.value()
+                
+                self.cml.size = lattice_size
                 self.cml.set_initial_conditions("random")
-                lattice_evolution = self.cml.run(250)
+                lattice_evolution = self.cml.run(time_steps)
+                
                 self.figure.clear()
                 
                 min_value = np.min(lattice_evolution)
                 max_value = np.max(lattice_evolution)
                 
-                # Use the selected colormap
                 selected_cmap = self.cmap_combo.currentText()
                 plt.imshow(lattice_evolution, aspect='auto', cmap=selected_cmap, vmin=min_value, vmax=max_value)
                 plt.colorbar()
+                
+                # Main title
                 plt.title('Coupled Map Lattice Evolution')
+                
+                # Subtitle with map function and parameters
+                map_function = self.map_function_combo.currentText()
+                param_str = ', '.join([f"{k}={v:.3f}" for k, v in self.cml.map_params.items()])
+                subtitle = f"Map: {map_function.capitalize()}, Parameters: {param_str}"
+                plt.suptitle(subtitle, fontsize=9, y=0.95)
+                
                 plt.xlabel('Lattice Site')
                 plt.ylabel('Time Step')
                 plt.clim(min_value, max_value)
