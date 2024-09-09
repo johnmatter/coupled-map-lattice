@@ -23,16 +23,20 @@ class CoupledMapLattice:
             slope = self.map_params.get('slope', 1.0)
             intercept = self.map_params.get('intercept', 0.0)
             self.f = lambda x: np.clip(slope * x + intercept, -1, 1)
+            self.is_2d = False
         elif map_function == 'logistic':
             r = self.map_params.get('r', 6.052)
             self.f = lambda x: np.clip(r * x * (1 - x), -1, 1)
+            self.is_2d = False
         elif map_function == 'circular':
             omega = self.map_params.get('omega', 0.5)
             k = self.map_params.get('k', 1.0)
             self.f = lambda x: np.clip((x + omega - k / (2 * np.pi) * np.sin(2 * np.pi * x)) % 1, -1, 1)
+            self.is_2d = False
         elif map_function == 'tent':
             s = self.map_params.get('s', 2.0)
             self.f = lambda x: np.clip(np.where(x < 0.5, s * x, s * (1 - x)), -1, 1)
+            self.is_2d = False
         # elif map_function == 'henon':
         #     a = self.map_params.get('a', 1.4)
         #     b = self.map_params.get('b', 0.3)
@@ -42,17 +46,21 @@ class CoupledMapLattice:
         #     self.f = lambda x, y: (np.mod(x + y + (K / (2 * np.pi)) * np.sin(2 * np.pi * x), 1), y)  # Also needs two state variables
         # elif map_function == 'arnold_cat': # Also needs two state variables
             # self.f = lambda x, y: (np.mod(x + y, 1), np.mod(x + 2 * y, 1))
+            # self.is_2d = True
         elif map_function == 'skew_tent':
             p = self.map_params.get('p', 0.3)
             self.f = lambda x: np.clip(np.where(x < p, x / p, (1 - x) / (1 - p)), -1, 1)
+            self.is_2d = False
         elif map_function == 'cubic':
             a = self.map_params.get('a', 2.5)
             self.f = lambda x: np.clip(a * x * (1 - x**2), -1, 1)
+            self.is_2d = False
         elif map_function == 'piecewise_linear':
             a1 = self.map_params.get('a1', 1.0)
             a2 = self.map_params.get('a2', -1.0)
             x0 = self.map_params.get('x0', 0.5)
             self.f = lambda x: np.clip(np.where(x < x0, a1 * x, a2 * x), -1, 1)
+            self.is_2d = False
         else:
             raise ValueError("Unsupported map function")
 
@@ -91,13 +99,7 @@ class CoupledMapLattice:
         elif boundary == 'antiperiodic':
             self.boundary = lambda x: (-np.roll(x, 1), -np.roll(x, -1))
         elif boundary == 'fixed':
-            if value is None:
-                self.boundary = lambda x: (np.pad(x[1:-1], (1, 1), 'edge'), np.pad(x[1:-1], (1, 1), 'edge'))
-            elif isinstance(value, (int, float)):
-                self.boundary = lambda x: (np.pad(x[1:-1], (1, 1), 'constant', constant_values=value),
-                                            np.pad(x[1:-1], (1, 1), 'constant', constant_values=value))
-            else:
-                raise ValueError("Invalid fixed boundary value")
+            self.boundary = lambda x: (np.pad(x[1:-1], (1, 1), 'edge'), np.pad(x[1:-1], (1, 1), 'edge'))
         else:
             raise ValueError("Unsupported boundary condition")
 
@@ -113,9 +115,16 @@ class CoupledMapLattice:
 
     def step(self):
         try:
-            fx = self.f(self.lattice)
-            left, right = self.boundary(fx)
-            self.lattice = np.clip((1 - self.coupling) * fx + self.coupling / 2 * (left + right), 0, 1)
+            if self.is_2d:
+                fx, fy = self.f(self.lattice[:, 0], self.lattice[:, 1])
+                left_x, right_x = self.boundary(fx)
+                left_y, right_y = self.boundary(fy)
+                self.lattice[:, 0] = np.clip((1 - self.coupling) * fx + self.coupling / 2 * (left_x + right_x), 0, 1)
+                self.lattice[:, 1] = np.clip((1 - self.coupling) * fy + self.coupling / 2 * (left_y + right_y), 0, 1)
+            else:
+                fx = self.f(self.lattice)
+                left, right = self.boundary(fx)
+                self.lattice = np.clip((1 - self.coupling) * fx + self.coupling / 2 * (left + right), 0, 1)
         except Exception as e:
             print(f"Error in step: {e}")
         return self.lattice
@@ -177,7 +186,7 @@ class App(QtWidgets.QWidget):
         # Map function selection
         control_layout.addWidget(QtWidgets.QLabel("Map Function:"), 0, 0)
         self.map_function_combo = QtWidgets.QComboBox()
-        self.map_function_combo.addItems(['logistic', 'linear', 'circular', 'tent', 'skew_tent', 'cubic', 'piecewise_linear'])
+        self.map_function_combo.addItems(['logistic', 'linear', 'circular', 'tent', 'arnold_cat', 'skew_tent', 'cubic', 'piecewise_linear'])
         self.map_function_combo.currentTextChanged.connect(self.update_map_function)
         control_layout.addWidget(self.map_function_combo, 0, 1)
 
@@ -217,17 +226,32 @@ class App(QtWidgets.QWidget):
         self.time_steps_input.setValue(250)
         control_layout.addWidget(self.time_steps_input, 1, 3)
 
+        # Coupling value
+        control_layout.addWidget(QtWidgets.QLabel("Coupling:"), 2, 2)
+        self.coupling_input = QtWidgets.QDoubleSpinBox()
+        self.coupling_input.setRange(0, 1)
+        self.coupling_input.setSingleStep(0.01)
+        self.coupling_input.setValue(0.1)
+        control_layout.addWidget(self.coupling_input, 2, 3)
+
+        # Boundary condition
+        control_layout.addWidget(QtWidgets.QLabel("Boundary Condition:"), 3, 2)
+        self.boundary_combo = QtWidgets.QComboBox()
+        self.boundary_combo.addItems(['periodic', 'antiperiodic', 'fixed'])
+        self.boundary_combo.currentTextChanged.connect(self.update_boundary_condition)
+        control_layout.addWidget(self.boundary_combo, 3, 3)
+
         # Colormap selection
         control_layout.addWidget(QtWidgets.QLabel("Colormap:"), 2, 2)
         self.cmap_combo = QtWidgets.QComboBox()
         self.cmap_combo.addItems(plt.colormaps())
         self.cmap_combo.currentTextChanged.connect(self.update_plot)
-        control_layout.addWidget(self.cmap_combo, 2, 3)
+        control_layout.addWidget(self.cmap_combo, 4, 3)
 
         # Run button
         self.run_button = QtWidgets.QPushButton("Run Simulation")
         self.run_button.clicked.connect(self.run_simulation)
-        control_layout.addWidget(self.run_button, 3, 2, 1, 2)
+        control_layout.addWidget(self.run_button, 5, 2, 1, 2)
 
         # Add control panel to main layout
         layout.addWidget(control_panel)
@@ -306,11 +330,17 @@ class App(QtWidgets.QWidget):
         else:
             self.initial_condition_input.hide()
 
+    def update_boundary_condition(self):
+        boundary = self.boundary_combo.currentText()
+        self.cml.set_boundary_condition(boundary)
+
     def run_simulation(self):
         lattice_size = self.lattice_size_input.value()
         time_steps = self.time_steps_input.value()
+        coupling = self.coupling_input.value()
         
         self.cml.size = lattice_size
+        self.cml.coupling = coupling
         
         # Set initial conditions
         condition = self.initial_condition_combo.currentText()
