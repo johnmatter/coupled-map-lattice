@@ -248,15 +248,16 @@ class App(QtWidgets.QWidget):
                 selected_cmap = self.cmap_combo.currentText()
                 plt.imshow(lattice_evolution, aspect='auto', cmap=selected_cmap, vmin=min_value, vmax=max_value)
                 plt.colorbar()
-                
-                # Main title
-                plt.title('Coupled Map Lattice Evolution')
-                
+
                 # Subtitle with map function and parameters
                 map_function = self.map_function_combo.currentText()
                 param_str = ', '.join([f"{k}={v:.3f}" for k, v in self.cml.map_params.items()])
                 subtitle = f"Map: {map_function.capitalize()}, Parameters: {param_str}"
-                plt.suptitle(subtitle, fontsize=9, y=0.95)
+                
+                # Main title
+                title = f'CML Evolution\n{subtitle}'
+                plt.title(title)
+                
                 
                 plt.xlabel('Lattice Site')
                 plt.ylabel('Time Step')
