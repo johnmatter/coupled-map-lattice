@@ -4,7 +4,6 @@ from PyQt5 import QtWidgets
 import sys
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-import time
 import random
 
 class CoupledMapLattice:
@@ -27,7 +26,7 @@ class CoupledMapLattice:
             intercept = self.map_params.get('intercept', 0.0)
             self.f = lambda x: np.clip(slope * x + intercept, -1, 1)
         elif map_function == 'logistic':
-            r = self.map_params.get('r', 3.9)
+            r = self.map_params.get('r', 6.052)
             self.f = lambda x: np.clip(r * x * (1 - x), -1, 1)
         elif map_function == 'circular':
             omega = self.map_params.get('omega', 0.5)
@@ -39,7 +38,7 @@ class CoupledMapLattice:
     def initialize_map_params(self, map_function):
         # Initialize map_params with random values based on the map function
         if map_function == 'logistic':
-            self.map_params = {'r': random.uniform(0, 4)}
+            self.map_params = {'r': random.uniform(0, 10)}
         elif map_function == 'linear':
             self.map_params = {
                 'slope': random.uniform(-2, 2),
@@ -99,17 +98,13 @@ class App(QtWidgets.QWidget):
             size=100, 
             coupling=0.1, 
             map_function='logistic', 
-            map_params={'r': 3.9}, 
+            map_params={'r': 6.052}, 
             boundary='periodic',
             initial_condition='random'
         )
         
-        # Timer for rate-limiting updates
-        self.last_update_time = 0
-        self.update_interval = 1 / 30  # 30 FPS
-
+        self.lattice_evolution = None
         self.initUI()
-        # self.startMIDI()
 
     def initUI(self):
         self.setWindowTitle('Coupled Map Lattice Control')
@@ -118,7 +113,7 @@ class App(QtWidgets.QWidget):
         # Top control panel
         control_panel = QtWidgets.QWidget()
         control_layout = QtWidgets.QGridLayout(control_panel)
-        control_panel.setFixedHeight(250)  # Adjust height as needed
+        control_panel.setFixedHeight(300)  # Increased height to accommodate new controls
 
         # Left column
         # Map function selection
@@ -136,7 +131,19 @@ class App(QtWidgets.QWidget):
         # Randomize button
         self.randomize_button = QtWidgets.QPushButton("Randomize Parameters")
         self.randomize_button.clicked.connect(self.randomize_parameters)
-        control_layout.addWidget(self.randomize_button, 2, 0, 1, 2)  # Span across two columns
+        control_layout.addWidget(self.randomize_button, 2, 0, 1, 2)
+
+        # Initial conditions
+        control_layout.addWidget(QtWidgets.QLabel("Initial Condition:"), 3, 0)
+        self.initial_condition_combo = QtWidgets.QComboBox()
+        self.initial_condition_combo.addItems(['random', 'constant', 'custom'])
+        self.initial_condition_combo.currentTextChanged.connect(self.update_initial_condition)
+        control_layout.addWidget(self.initial_condition_combo, 3, 1)
+
+        self.initial_condition_input = QtWidgets.QLineEdit()
+        self.initial_condition_input.setPlaceholderText("Enter value or list")
+        control_layout.addWidget(self.initial_condition_input, 4, 0, 1, 2)
+        self.initial_condition_input.hide()
 
         # Right column
         # Lattice size, time steps, etc.
@@ -155,14 +162,14 @@ class App(QtWidgets.QWidget):
         # Colormap selection
         control_layout.addWidget(QtWidgets.QLabel("Colormap:"), 2, 2)
         self.cmap_combo = QtWidgets.QComboBox()
-        self.cmap_combo.addItems([
-            'viridis', 'plasma', 'inferno', 'magma', 'cividis',  # Sequential
-            'coolwarm', 'RdYlBu', 'Spectral', 'PiYG', 'BrBG',    # Divergent
-            'Set1', 'Set2', 'Set3', 'Pastel1', 'Pastel2',        # Qualitative
-            'Accent', 'Dark2', 'Paired', 'tab10', 'tab20'        # Miscellaneous
-        ])
+        self.cmap_combo.addItems(plt.colormaps())
         self.cmap_combo.currentTextChanged.connect(self.update_plot)
         control_layout.addWidget(self.cmap_combo, 2, 3)
+
+        # Run button
+        self.run_button = QtWidgets.QPushButton("Run Simulation")
+        self.run_button.clicked.connect(self.run_simulation)
+        control_layout.addWidget(self.run_button, 3, 2, 1, 2)
 
         # Add control panel to main layout
         layout.addWidget(control_panel)
@@ -174,41 +181,34 @@ class App(QtWidgets.QWidget):
 
         self.setLayout(layout)
         self.update_parameter_inputs()
-        self.update_plot()
         self.show()
 
     def update_map_function(self):
         function = self.map_function_combo.currentText()
-        
-        self.cml.set_map_function(
-            function,
-            self.cml.initialize_map_params(function)
-        )
+        self.cml.set_map_function(function, self.cml.initialize_map_params(function))
         self.update_parameter_inputs()
-        self.update_plot()
 
     def update_parameter_inputs(self):
-        # Clear existing inputs
         for i in reversed(range(self.param_layout.count())): 
             self.param_layout.itemAt(i).widget().setParent(None)
         self.param_inputs.clear()
 
-        # Add new inputs based on current map function
         function = self.map_function_combo.currentText()
         if function == 'logistic':
-            self.add_parameter_input('r', 3.9, 0, 4)
+            self.add_parameter_input('r', self.cml.map_params.get('r', 6.052), 0, 10)
         elif function == 'linear':
-            self.add_parameter_input('slope', 1.0, -2, 2)
-            self.add_parameter_input('intercept', 0.0, -1, 1)
+            self.add_parameter_input('slope', self.cml.map_params.get('slope', -1.010), -2, 2)
+            self.add_parameter_input('intercept', self.cml.map_params.get('intercept', 0.911), -1, 1)
         elif function == 'circular':
-            self.add_parameter_input('omega', 0.5, 0, 1)
-            self.add_parameter_input('k', 1.0, 0, 2)
+            self.add_parameter_input('omega', self.cml.map_params.get('omega', 0.532), 0, 1)
+            self.add_parameter_input('k', self.cml.map_params.get('k', 0.845), 0, 2)
 
     def add_parameter_input(self, name, default, min_val, max_val):
         label = QtWidgets.QLabel(f"{name}:")
         input_box = QtWidgets.QDoubleSpinBox()
         input_box.setRange(min_val, max_val)
         input_box.setSingleStep(0.001)
+        input_box.setDecimals(3)  # Set precision to 3 decimal places
         input_box.setValue(default)
         input_box.valueChanged.connect(self.update_parameters)
         
@@ -220,85 +220,83 @@ class App(QtWidgets.QWidget):
     def update_parameters(self):
         params = {name: input_box.value() for name, input_box in self.param_inputs.items()}
         self.cml.set_map_function(self.map_function_combo.currentText(), params)
-        self.update_plot()
 
     def randomize_parameters(self):
         current_function = self.map_function_combo.currentText()
         new_params = self.cml.initialize_map_params(current_function)
         self.cml.set_map_function(current_function, new_params)
-        self.update_parameter_inputs()
+        
+        # Update the Qt fields with the new parameter values
+        for name, value in new_params.items():
+            if name in self.param_inputs:
+                self.param_inputs[name].setValue(value)
+
+    def update_initial_condition(self):
+        condition = self.initial_condition_combo.currentText()
+        if condition == 'constant' or condition == 'custom':
+            self.initial_condition_input.show()
+        else:
+            self.initial_condition_input.hide()
+
+    def run_simulation(self):
+        lattice_size = self.lattice_size_input.value()
+        time_steps = self.time_steps_input.value()
+        
+        self.cml.size = lattice_size
+        
+        # Set initial conditions
+        condition = self.initial_condition_combo.currentText()
+        if condition == 'random':
+            self.cml.set_initial_conditions('random')
+        elif condition == 'constant':
+            try:
+                value = float(self.initial_condition_input.text())
+                self.cml.set_initial_conditions(value)
+            except ValueError:
+                print("Invalid constant value. Using random initial conditions.")
+                self.cml.set_initial_conditions('random')
+        elif condition == 'custom':
+            try:
+                values = [float(x) for x in self.initial_condition_input.text().split(',')]
+                if len(values) == lattice_size:
+                    self.cml.set_initial_conditions(values)
+                else:
+                    print("Custom values don't match lattice size. Using random initial conditions.")
+                    self.cml.set_initial_conditions('random')
+            except ValueError:
+                print("Invalid custom values. Using random initial conditions.")
+                self.cml.set_initial_conditions('random')
+        
+        self.lattice_evolution = self.cml.run(time_steps)
         self.update_plot()
 
     def update_plot(self):
-        current_time = time.time()
-        if current_time - self.last_update_time >= self.update_interval:
-            try:
-                lattice_size = self.lattice_size_input.value()
-                time_steps = self.time_steps_input.value()
-                
-                self.cml.size = lattice_size
-                self.cml.set_initial_conditions("random")
-                lattice_evolution = self.cml.run(time_steps)
-                
-                self.figure.clear()
-                
-                min_value = np.min(lattice_evolution)
-                max_value = np.max(lattice_evolution)
-                
-                selected_cmap = self.cmap_combo.currentText()
-                plt.imshow(lattice_evolution, aspect='auto', cmap=selected_cmap, vmin=min_value, vmax=max_value)
-                plt.colorbar()
+        if self.lattice_evolution is None:
+            return
 
-                # Subtitle with map function and parameters
-                map_function = self.map_function_combo.currentText()
-                param_str = ', '.join([f"{k}={v:.3f}" for k, v in self.cml.map_params.items()])
-                subtitle = f"Map: {map_function.capitalize()}, Parameters: {param_str}"
-                
-                # Main title
-                title = f'CML Evolution\n{subtitle}'
-                plt.title(title)
-                
-                
-                plt.xlabel('Lattice Site')
-                plt.ylabel('Time Step')
-                plt.clim(min_value, max_value)
-                
-                self.canvas.draw()
-                self.last_update_time = current_time
-            except Exception as e:
-                print(f"Error updating plot: {e}")
+        self.figure.clear()
+        
+        min_value = np.min(self.lattice_evolution)
+        max_value = np.max(self.lattice_evolution)
+        
+        selected_cmap = self.cmap_combo.currentText()
+        plt.imshow(self.lattice_evolution, aspect='auto', cmap=selected_cmap, vmin=min_value, vmax=max_value)
+        plt.colorbar()
 
-    def startMIDI(self):
-        self.midi_input = mido.open_input('16n Port 1')
-        self.midi_input.callback = self.midi_callback
-
-    def midi_callback(self, msg):
-        current_time = time.time()
-        if current_time - self.last_update_time >= self.update_interval:
-          if msg.type == 'control_change':
-            if msg.control > 31 and msg.control < 35:
-              if msg.control == 32:
-                  self.cml.coupling = msg.value / 127.0
-              elif msg.control == 33:
-                  self.cml.set_map_function(
-                      'linear',
-                      {
-                          'slope': msg.value / 127.0 * 1 - 0.5,
-                          'intercept': self.map_params.get('intercept', 1.0),
-                      }
-                  )
-                  print(f"cc {msg.control} {msg.value}")
-              elif msg.control == 34:
-                  self.cml.set_map_function(
-                      'linear',
-                      {
-                          'slope': self.map_params.get('slope', 1.0),
-                          'intercept': msg.value / 127.0 * 4,
-                      }
-                  )
-                  print(f"cc {msg.control} {msg.value}")
-              self.update_plot()
-              self.last_update_time = current_time
+        # Subtitle with map function and parameters
+        map_function = self.map_function_combo.currentText()
+        param_str = ', '.join([f"{k}={v:.3f}" for k, v in self.cml.map_params.items()])
+        subtitle = f"Map: {map_function.capitalize()}, Parameters: {param_str}"
+        
+        # Main title
+        title = f'CML Evolution\n{subtitle}'
+        plt.title(title)
+        
+        plt.xlabel('Lattice Site')
+        plt.ylabel('Time Step')
+        plt.clim(min_value, max_value)
+        
+        self.canvas.draw()
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
