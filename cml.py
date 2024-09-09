@@ -1,6 +1,6 @@
 import numpy as np
 import mido
-from PyQt5 import QtWidgets
+from PyQt5 import QtCore, QtWidgets
 import sys
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -91,6 +91,32 @@ class CoupledMapLattice:
     def run(self, steps):
         return np.array([self.step() for _ in range(steps)])
 
+class MultiRowComboBox(QtWidgets.QComboBox):
+    def __init__(self, items, max_rows=10, parent=None):
+        super().__init__(parent)
+        self.setView(QtWidgets.QListView())
+        self.view().setWrapping(True)
+        self.view().setViewMode(QtWidgets.QListView.ListMode)
+        self.view().setFlow(QtWidgets.QListView.TopToBottom)
+        self.addItems(items)
+        
+        item_width = self.view().sizeHintForColumn(0)
+        self.view().setMinimumWidth(item_width * 6)
+        
+        row_height = self.view().sizeHintForRow(0)
+        self.view().setMaximumHeight(row_height * max_rows)
+        self.view().setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+
+        # Set a fixed height for the combo box itself
+        self.setFixedHeight(row_height * 2)  # Adjust as needed
+
+    def showPopup(self):
+        super().showPopup()
+        # Adjust the size of the popup
+        self.view().setGridSize(QtCore.QSize(self.view().sizeHintForColumn(0), self.view().sizeHintForRow(0)))
+        # Limit the height of the popup
+        self.view().setMaximumHeight(self.view().maximumHeight())
+
 class App(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
@@ -113,7 +139,7 @@ class App(QtWidgets.QWidget):
         # Top control panel
         control_panel = QtWidgets.QWidget()
         control_layout = QtWidgets.QGridLayout(control_panel)
-        control_panel.setFixedHeight(300)  # Increased height to accommodate new controls
+        control_panel.setFixedHeight(300)
 
         # Left column
         # Map function selection
@@ -206,9 +232,9 @@ class App(QtWidgets.QWidget):
     def add_parameter_input(self, name, default, min_val, max_val):
         label = QtWidgets.QLabel(f"{name}:")
         input_box = QtWidgets.QDoubleSpinBox()
+        input_box.setDecimals(3)
         input_box.setRange(min_val, max_val)
         input_box.setSingleStep(0.001)
-        input_box.setDecimals(3)  # Set precision to 3 decimal places
         input_box.setValue(default)
         input_box.valueChanged.connect(self.update_parameters)
         
