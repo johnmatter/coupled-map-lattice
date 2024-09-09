@@ -19,7 +19,6 @@ class CoupledMapLattice:
         if map_params is None or not isinstance(map_params, dict):
             self.initialize_map_params(map_function)
 
-        # Other maps to implement can be found at https://en.wikipedia.org/wiki/List_of_chaotic_maps
         if map_function == 'linear':
             slope = self.map_params.get('slope', 1.0)
             intercept = self.map_params.get('intercept', 0.0)
@@ -33,7 +32,7 @@ class CoupledMapLattice:
             self.f = lambda x: np.clip((x + omega - k / (2 * np.pi) * np.sin(2 * np.pi * x)) % 1, -1, 1)
         elif map_function == 'tent':
             s = self.map_params.get('s', 2.0)
-            self.f = lambda x: np.clip(s * x if x < 0.5 else s * (1 - x), -1, 1)
+            self.f = lambda x: np.clip(np.where(x < 0.5, s * x, s * (1 - x)), -1, 1)
         # elif map_function == 'henon':
         #     a = self.map_params.get('a', 1.4)
         #     b = self.map_params.get('b', 0.3)
@@ -45,7 +44,7 @@ class CoupledMapLattice:
             # self.f = lambda x, y: (np.mod(x + y, 1), np.mod(x + 2 * y, 1))
         elif map_function == 'skew_tent':
             p = self.map_params.get('p', 0.3)
-            self.f = lambda x: np.clip((x / p if x < p else (1 - x) / (1 - p)), -1, 1)
+            self.f = lambda x: np.clip(np.where(x < p, x / p, (1 - x) / (1 - p)), -1, 1)
         elif map_function == 'cubic':
             a = self.map_params.get('a', 2.5)
             self.f = lambda x: np.clip(a * x * (1 - x**2), -1, 1)
@@ -53,7 +52,7 @@ class CoupledMapLattice:
             a1 = self.map_params.get('a1', 1.0)
             a2 = self.map_params.get('a2', -1.0)
             x0 = self.map_params.get('x0', 0.5)
-            self.f = lambda x: np.clip(a1 * x if x < x0 else a2 * x, -1, 1)
+            self.f = lambda x: np.clip(np.where(x < x0, a1 * x, a2 * x), -1, 1)
         else:
             raise ValueError("Unsupported map function")
 
@@ -71,9 +70,9 @@ class CoupledMapLattice:
                 'k': random.uniform(0, 2)
             }
         elif map_function == 'tent':
-            self.map_params = {'s': random.uniform(0, 2)}
+            self.map_params = {'s': random.uniform(0, 10)}
         elif map_function == 'skew_tent':
-            self.map_params = {'p': random.uniform(0, 1)}
+            self.map_params = {'p': random.uniform(0, 10)}
         elif map_function == 'cubic':
             self.map_params = {'a': random.uniform(0, 10)}
         elif map_function == 'piecewise_linear':
@@ -262,15 +261,15 @@ class App(QtWidgets.QWidget):
             self.add_parameter_input('omega', self.cml.map_params.get('omega', 0.532), 0, 1)
             self.add_parameter_input('k', self.cml.map_params.get('k', 0.845), 0, 2)
         elif function == 'tent':
-            self.add_parameter_input('s', self.cml.map_params.get('s', 2.0), 0, 2)
+            self.add_parameter_input('s', self.cml.map_params.get('s', 2.0), 0, 10)
         elif function == 'skew_tent':
-            self.add_parameter_input('p', self.cml.map_params.get('p', 0.3), 0, 1)
+            self.add_parameter_input('p', self.cml.map_params.get('p', 0.3), 0, 10)
         elif function == 'cubic':
             self.add_parameter_input('a', self.cml.map_params.get('a', 2.5), 0, 10)
         elif function == 'piecewise_linear':
             self.add_parameter_input('a1', self.cml.map_params.get('a1', 1.0), -2, 2)
             self.add_parameter_input('a2', self.cml.map_params.get('a2', -1.0), -2, 2)
-            self.add_parameter_input('x0', self.cml.map_params.get('x0', 0.5), 0, 1)
+            self.add_parameter_input('x0', self.cml.map_params.get('x0', 0.5), 0, 10)
 
     def add_parameter_input(self, name, default, min_val, max_val):
         label = QtWidgets.QLabel(f"{name}:")
