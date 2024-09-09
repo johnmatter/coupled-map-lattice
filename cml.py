@@ -9,18 +9,17 @@ import random
 class CoupledMapLattice:
     def __init__(self, size, coupling, map_function='logistic', map_params=None, boundary='periodic', initial_condition='random'):
         self.size = size
-        self.map_params = map_params if map_params is not None else {}  # Initialize with an empty dict if None
+        self.map_params = map_params if map_params is not None else {}
         self.coupling = coupling
         self.set_map_function(map_function, self.map_params)
         self.set_boundary_condition(boundary)
         self.set_initial_conditions(initial_condition)
 
     def set_map_function(self, map_function, map_params=None):
-        # Safety check for map_params initialization
         if map_params is None or not isinstance(map_params, dict):
             self.initialize_map_params(map_function)
 
-        self.map_params = map_params
+        # Other maps to implement can be found at https://en.wikipedia.org/wiki/List_of_chaotic_maps
         if map_function == 'linear':
             slope = self.map_params.get('slope', 1.0)
             intercept = self.map_params.get('intercept', 0.0)
@@ -32,11 +31,33 @@ class CoupledMapLattice:
             omega = self.map_params.get('omega', 0.5)
             k = self.map_params.get('k', 1.0)
             self.f = lambda x: np.clip((x + omega - k / (2 * np.pi) * np.sin(2 * np.pi * x)) % 1, -1, 1)
+        elif map_function == 'tent':
+            s = self.map_params.get('s', 2.0)
+            self.f = lambda x: np.clip(s * x if x < 0.5 else s * (1 - x), -1, 1)
+        # elif map_function == 'henon':
+        #     a = self.map_params.get('a', 1.4)
+        #     b = self.map_params.get('b', 0.3)
+        #     self.f = lambda x, y: (1 - a * x**2 + y, b * x)  # Needs two state variables
+        # elif map_function == 'standard':
+        #     K = self.map_params.get('K', 1.0)
+        #     self.f = lambda x, y: (np.mod(x + y + (K / (2 * np.pi)) * np.sin(2 * np.pi * x), 1), y)  # Also needs two state variables
+        # elif map_function == 'arnold_cat': # Also needs two state variables
+            # self.f = lambda x, y: (np.mod(x + y, 1), np.mod(x + 2 * y, 1))
+        elif map_function == 'skew_tent':
+            p = self.map_params.get('p', 0.3)
+            self.f = lambda x: np.clip((x / p if x < p else (1 - x) / (1 - p)), -1, 1)
+        elif map_function == 'cubic':
+            a = self.map_params.get('a', 2.5)
+            self.f = lambda x: np.clip(a * x * (1 - x**2), -1, 1)
+        elif map_function == 'piecewise_linear':
+            a1 = self.map_params.get('a1', 1.0)
+            a2 = self.map_params.get('a2', -1.0)
+            x0 = self.map_params.get('x0', 0.5)
+            self.f = lambda x: np.clip(a1 * x if x < x0 else a2 * x, -1, 1)
         else:
             raise ValueError("Unsupported map function")
 
     def initialize_map_params(self, map_function):
-        # Initialize map_params with random values based on the map function
         if map_function == 'logistic':
             self.map_params = {'r': random.uniform(0, 10)}
         elif map_function == 'linear':
@@ -48,6 +69,18 @@ class CoupledMapLattice:
             self.map_params = {
                 'omega': random.uniform(0, 1),
                 'k': random.uniform(0, 2)
+            }
+        elif map_function == 'tent':
+            self.map_params = {'s': random.uniform(0, 2)}
+        elif map_function == 'skew_tent':
+            self.map_params = {'p': random.uniform(0, 1)}
+        elif map_function == 'cubic':
+            self.map_params = {'a': random.uniform(0, 10)}
+        elif map_function == 'piecewise_linear':
+            self.map_params = {
+                'a1': random.uniform(-2, 2),
+                'a2': random.uniform(-2, 2),
+                'x0': random.uniform(0, 1)
             }
         else:
             raise ValueError("Unsupported map function for parameter initialization")
@@ -101,7 +134,7 @@ class MultiRowComboBox(QtWidgets.QComboBox):
         self.addItems(items)
         
         item_width = self.view().sizeHintForColumn(0)
-        self.view().setMinimumWidth(item_width * 6)
+        self.view().setMinimumWidth(item_width * 10)
         
         row_height = self.view().sizeHintForRow(0)
         self.view().setMaximumHeight(row_height * max_rows)
@@ -145,7 +178,7 @@ class App(QtWidgets.QWidget):
         # Map function selection
         control_layout.addWidget(QtWidgets.QLabel("Map Function:"), 0, 0)
         self.map_function_combo = QtWidgets.QComboBox()
-        self.map_function_combo.addItems(['logistic', 'linear', 'circular'])
+        self.map_function_combo.addItems(['logistic', 'linear', 'circular', 'tent', 'skew_tent', 'cubic', 'piecewise_linear'])
         self.map_function_combo.currentTextChanged.connect(self.update_map_function)
         control_layout.addWidget(self.map_function_combo, 0, 1)
 
@@ -228,6 +261,16 @@ class App(QtWidgets.QWidget):
         elif function == 'circular':
             self.add_parameter_input('omega', self.cml.map_params.get('omega', 0.532), 0, 1)
             self.add_parameter_input('k', self.cml.map_params.get('k', 0.845), 0, 2)
+        elif function == 'tent':
+            self.add_parameter_input('s', self.cml.map_params.get('s', 2.0), 0, 2)
+        elif function == 'skew_tent':
+            self.add_parameter_input('p', self.cml.map_params.get('p', 0.3), 0, 1)
+        elif function == 'cubic':
+            self.add_parameter_input('a', self.cml.map_params.get('a', 2.5), 0, 10)
+        elif function == 'piecewise_linear':
+            self.add_parameter_input('a1', self.cml.map_params.get('a1', 1.0), -2, 2)
+            self.add_parameter_input('a2', self.cml.map_params.get('a2', -1.0), -2, 2)
+            self.add_parameter_input('x0', self.cml.map_params.get('x0', 0.5), 0, 1)
 
     def add_parameter_input(self, name, default, min_val, max_val):
         label = QtWidgets.QLabel(f"{name}:")
