@@ -1,11 +1,13 @@
-import numpy as np
-import struct
-import mido
-from PyQt5 import QtCore, QtWidgets
+import os
 import sys
+import struct
+import random
+import datetime
+
+import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-import random
+from PyQt5 import QtCore, QtWidgets
 
 class CoupledMapLattice:
     def __init__(self, size, coupling, map_function='logistic', map_params=None, boundary='periodic', initial_condition='random'):
@@ -171,7 +173,7 @@ class App(QtWidgets.QWidget):
             initial_condition='random'
         )
         
-        self.lattice_evolution = None
+        self.lattice = None
         self.initUI()
 
     def initUI(self):
@@ -263,6 +265,11 @@ class App(QtWidgets.QWidget):
         self.run_button = QtWidgets.QPushButton("Run Simulation")
         self.run_button.clicked.connect(self.run_simulation)
         control_layout.addWidget(self.run_button, 6, 0, 1, 4)
+
+        # Save button
+        self.save_button = QtWidgets.QPushButton("Save Lattice")
+        self.save_button.clicked.connect(self.export_to_jxf)
+        control_layout.addWidget(self.save_button, 7, 0, 1, 4)
 
         # Add control panel to main layout
         layout.addWidget(control_panel)
@@ -376,20 +383,20 @@ class App(QtWidgets.QWidget):
                 print("Invalid custom values. Using random initial conditions.")
                 self.cml.set_initial_conditions('random')
         
-        self.lattice_evolution = self.cml.run(time_steps)
+        self.lattice = self.cml.run(time_steps)
         self.update_plot()
 
     def update_plot(self):
-        if self.lattice_evolution is None:
+        if self.lattice is None:
             return
 
         self.figure.clear()
         
-        min_value = np.min(self.lattice_evolution)
-        max_value = np.max(self.lattice_evolution)
+        min_value = np.min(self.lattice)
+        max_value = np.max(self.lattice)
         
         selected_cmap = self.cmap_combo.currentText()
-        plt.imshow(self.lattice_evolution, aspect='auto', cmap=selected_cmap, vmin=min_value, vmax=max_value)
+        plt.imshow(self.lattice, aspect='auto', cmap=selected_cmap, vmin=min_value, vmax=max_value)
         plt.colorbar()
 
         # Subtitle with map function and parameters
@@ -406,6 +413,90 @@ class App(QtWidgets.QWidget):
         plt.clim(min_value, max_value)
         
         self.canvas.draw()
+
+    def export_to_jxf(self):
+        """
+        Export a NumPy ndarray to a Max/MSP binary Jitter matrix format (.jxf).
+
+        Parameters:
+        - matrix: NumPy ndarray to export.
+        - filename: Output filename for the .jxf file.
+        """
+        if self.lattice is None:
+            QtWidgets.QMessageBox.warning(self, "Warning", "No simulation data to save. Please run a simulation first.")
+            return
+
+        # Ensure the matrix is a NumPy array
+        if not isinstance(self.lattice, np.ndarray):
+            raise ValueError("Input must be a NumPy ndarray.")
+
+        # Coerce ints and floats if needed. This is destructive!
+        if self.lattice.dtype.kind in ['i', 'u', 'b'] and self.lattice.dtype is not np.uint8:
+            self.lattice = self.lattice.astype(np.uint8)
+        if self.lattice.dtype.kind in ['f'] and self.lattice.dtype is not np.uint8:
+            self.lattice = self.lattice.astype(np.float32)
+
+        # Check if the data type is supported (float32 or uint8)
+        if self.lattice.dtype not in [np.float32, np.uint8]:
+            raise ValueError(f"Data type must be float32 or uint8. Got {self.lattice.dtype}")
+
+        # A final coercion
+        if self.lattice.dtype is not np.dtype(np.float32):
+            self.lattice = self.lattice.astype(np.float32)
+
+        # Create filename
+        timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        filename = f"{timestamp}.jxf"
+        filename = os.path.join('exports', filename)
+
+        # Ensure the exports directory exists
+        os.makedirs('exports', exist_ok=True)
+
+        # Prepare header information
+        match self.lattice.dtype:
+            case np.uint8:
+                matrix_type = b'CHAR'
+            case np.float32:
+                matrix_type = b'FL32'
+            case _:
+                raise ValueError(f"Unsupported data type: {self.lattice.dtype}")
+        plane_count = 1 if self.lattice.ndim == 2 else self.lattice.shape[2]
+        dim_count = 2 if self.lattice.ndim == 2 else 3
+        dimensions = self.lattice.shape[:2][::-1]  # Reverse for row-major order
+
+        # Calculate sizes
+        matrix_data_size = self.lattice.nbytes
+        matrix_header_size = 24 + (4 * dim_count)
+        matrix_chunk_size = matrix_header_size + matrix_data_size
+        total_file_size = 20 + 20 + matrix_chunk_size  # Container + Format + Matrix chunks
+
+
+        # Open the file for writing in binary mode
+        with open(filename, 'wb') as f:
+            # Write Container Chunk
+            f.write(b'FORM')
+            f.write(struct.pack('>I', total_file_size - 8))
+            f.write(b'JIT!')
+
+            # Write Format Chunk
+            f.write(b'FVER')
+            f.write(struct.pack('>I', 12))
+            f.write(struct.pack('>I', 0x3C93DC80))  # JIT_BIN_VERSION_1
+
+            # Write Matrix Chunk
+            f.write(b'MTRX')
+            f.write(struct.pack('>I', matrix_chunk_size))
+            f.write(struct.pack('>I', matrix_header_size))
+            f.write(matrix_type)
+            f.write(struct.pack('>I', plane_count))
+            f.write(struct.pack('>I', dim_count))
+            for dim in dimensions:
+                f.write(struct.pack('>I', dim))
+
+            # Write matrix data
+            f.write(self.lattice.astype('>f4').tobytes())
+
+        QtWidgets.QMessageBox.information(self, "Success", f"Lattice saved as {filename}.")
 
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
