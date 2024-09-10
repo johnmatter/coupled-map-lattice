@@ -1,4 +1,5 @@
 import numpy as np
+import struct
 import mido
 from PyQt5 import QtCore, QtWidgets
 import sys
@@ -183,8 +184,28 @@ class App(QtWidgets.QWidget):
         control_panel.setFixedHeight(300)
 
         # Left column
+
+        # Boundary condition
+        control_layout.addWidget(QtWidgets.QLabel("Boundary Condition:"), 0, 0)
+        self.boundary_combo = QtWidgets.QComboBox()
+        self.boundary_combo.addItems(['periodic', 'antiperiodic', 'fixed'])
+        self.boundary_combo.currentTextChanged.connect(self.update_boundary_condition)
+        control_layout.addWidget(self.boundary_combo, 0, 1)
+
+        # Initial conditions
+        control_layout.addWidget(QtWidgets.QLabel("Initial Condition:"), 1, 0)
+        self.initial_condition_combo = QtWidgets.QComboBox()
+        self.initial_condition_combo.addItems(['random', 'constant', 'custom'])
+        self.initial_condition_combo.currentTextChanged.connect(self.update_initial_condition)
+        control_layout.addWidget(self.initial_condition_combo, 1, 1)
+
+        self.initial_condition_input = QtWidgets.QLineEdit()
+        self.initial_condition_input.setPlaceholderText("Enter value or list")
+        control_layout.addWidget(self.initial_condition_input, 2, 0, 1, 2)
+        self.initial_condition_input.hide()
+
         # Map function selection
-        control_layout.addWidget(QtWidgets.QLabel("Map Function:"), 0, 0)
+        control_layout.addWidget(QtWidgets.QLabel("Map Function:"), 3, 0)
         self.map_function_combo = QtWidgets.QComboBox()
         self.map_function_combo.addItems([
             'logistic',
@@ -197,36 +218,12 @@ class App(QtWidgets.QWidget):
             'piecewise_linear'
         ])
         self.map_function_combo.currentTextChanged.connect(self.update_map_function)
-        control_layout.addWidget(self.map_function_combo, 0, 1)
+        control_layout.addWidget(self.map_function_combo, 3, 1)
 
         # Map function parameters
         self.param_inputs = {}
         self.param_layout = QtWidgets.QGridLayout()
-        control_layout.addLayout(self.param_layout, 1, 0, 1, 2)
-
-        # Randomize button
-        self.randomize_button = QtWidgets.QPushButton("Randomize Parameters")
-        self.randomize_button.clicked.connect(self.randomize_parameters)
-        control_layout.addWidget(self.randomize_button, 2, 0, 1, 2)
-
-        # Boundary condition
-        control_layout.addWidget(QtWidgets.QLabel("Boundary Condition:"), 3, 0)
-        self.boundary_combo = QtWidgets.QComboBox()
-        self.boundary_combo.addItems(['periodic', 'antiperiodic', 'fixed'])
-        self.boundary_combo.currentTextChanged.connect(self.update_boundary_condition)
-        control_layout.addWidget(self.boundary_combo, 3, 1)
-
-        # Initial conditions
-        control_layout.addWidget(QtWidgets.QLabel("Initial Condition:"), 4, 0)
-        self.initial_condition_combo = QtWidgets.QComboBox()
-        self.initial_condition_combo.addItems(['random', 'constant', 'custom'])
-        self.initial_condition_combo.currentTextChanged.connect(self.update_initial_condition)
-        control_layout.addWidget(self.initial_condition_combo, 4, 1)
-
-        self.initial_condition_input = QtWidgets.QLineEdit()
-        self.initial_condition_input.setPlaceholderText("Enter value or list")
-        control_layout.addWidget(self.initial_condition_input, 5, 0, 1, 2)
-        self.initial_condition_input.hide()
+        control_layout.addLayout(self.param_layout, 4, 0, 1, 2)
 
         # Right column
         # Lattice size, time steps, etc.
@@ -251,16 +248,21 @@ class App(QtWidgets.QWidget):
         control_layout.addWidget(self.coupling_input, 2, 3)
 
         # Colormap selection
-        control_layout.addWidget(QtWidgets.QLabel("Colormap:"), 4, 2)
+        control_layout.addWidget(QtWidgets.QLabel("Colormap:"), 3, 2)
         self.cmap_combo = QtWidgets.QComboBox()
         self.cmap_combo.addItems(plt.colormaps())
         self.cmap_combo.currentTextChanged.connect(self.update_plot)
         control_layout.addWidget(self.cmap_combo, 4, 3)
 
+        # Randomize button
+        self.randomize_button = QtWidgets.QPushButton("Randomize Parameters")
+        self.randomize_button.clicked.connect(self.randomize_parameters)
+        control_layout.addWidget(self.randomize_button, 5, 0, 1, 4)
+
         # Run button
         self.run_button = QtWidgets.QPushButton("Run Simulation")
         self.run_button.clicked.connect(self.run_simulation)
-        control_layout.addWidget(self.run_button, 5, 2, 1, 2)
+        control_layout.addWidget(self.run_button, 6, 0, 1, 4)
 
         # Add control panel to main layout
         layout.addWidget(control_panel)
