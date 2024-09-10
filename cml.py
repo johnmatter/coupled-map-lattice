@@ -186,7 +186,16 @@ class App(QtWidgets.QWidget):
         # Map function selection
         control_layout.addWidget(QtWidgets.QLabel("Map Function:"), 0, 0)
         self.map_function_combo = QtWidgets.QComboBox()
-        self.map_function_combo.addItems(['logistic', 'linear', 'circular', 'tent', 'arnold_cat', 'skew_tent', 'cubic', 'piecewise_linear'])
+        self.map_function_combo.addItems([
+            'logistic',
+            'linear',
+            'circular',
+            'tent',
+            # 'arnold_cat',
+            'skew_tent',
+            'cubic',
+            'piecewise_linear'
+        ])
         self.map_function_combo.currentTextChanged.connect(self.update_map_function)
         control_layout.addWidget(self.map_function_combo, 0, 1)
 
@@ -242,7 +251,7 @@ class App(QtWidgets.QWidget):
         control_layout.addWidget(self.boundary_combo, 3, 3)
 
         # Colormap selection
-        control_layout.addWidget(QtWidgets.QLabel("Colormap:"), 2, 2)
+        control_layout.addWidget(QtWidgets.QLabel("Colormap:"), 4, 2)
         self.cmap_combo = QtWidgets.QComboBox()
         self.cmap_combo.addItems(plt.colormaps())
         self.cmap_combo.currentTextChanged.connect(self.update_plot)
