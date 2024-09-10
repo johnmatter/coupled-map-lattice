@@ -209,16 +209,23 @@ class App(QtWidgets.QWidget):
         self.randomize_button.clicked.connect(self.randomize_parameters)
         control_layout.addWidget(self.randomize_button, 2, 0, 1, 2)
 
+        # Boundary condition
+        control_layout.addWidget(QtWidgets.QLabel("Boundary Condition:"), 3, 0)
+        self.boundary_combo = QtWidgets.QComboBox()
+        self.boundary_combo.addItems(['periodic', 'antiperiodic', 'fixed'])
+        self.boundary_combo.currentTextChanged.connect(self.update_boundary_condition)
+        control_layout.addWidget(self.boundary_combo, 3, 1)
+
         # Initial conditions
-        control_layout.addWidget(QtWidgets.QLabel("Initial Condition:"), 3, 0)
+        control_layout.addWidget(QtWidgets.QLabel("Initial Condition:"), 4, 0)
         self.initial_condition_combo = QtWidgets.QComboBox()
         self.initial_condition_combo.addItems(['random', 'constant', 'custom'])
         self.initial_condition_combo.currentTextChanged.connect(self.update_initial_condition)
-        control_layout.addWidget(self.initial_condition_combo, 3, 1)
+        control_layout.addWidget(self.initial_condition_combo, 4, 1)
 
         self.initial_condition_input = QtWidgets.QLineEdit()
         self.initial_condition_input.setPlaceholderText("Enter value or list")
-        control_layout.addWidget(self.initial_condition_input, 4, 0, 1, 2)
+        control_layout.addWidget(self.initial_condition_input, 5, 0, 1, 2)
         self.initial_condition_input.hide()
 
         # Right column
@@ -242,13 +249,6 @@ class App(QtWidgets.QWidget):
         self.coupling_input.setSingleStep(0.01)
         self.coupling_input.setValue(0.1)
         control_layout.addWidget(self.coupling_input, 2, 3)
-
-        # Boundary condition
-        control_layout.addWidget(QtWidgets.QLabel("Boundary Condition:"), 3, 2)
-        self.boundary_combo = QtWidgets.QComboBox()
-        self.boundary_combo.addItems(['periodic', 'antiperiodic', 'fixed'])
-        self.boundary_combo.currentTextChanged.connect(self.update_boundary_condition)
-        control_layout.addWidget(self.boundary_combo, 3, 3)
 
         # Colormap selection
         control_layout.addWidget(QtWidgets.QLabel("Colormap:"), 4, 2)
